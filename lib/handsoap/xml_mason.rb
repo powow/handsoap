@@ -115,6 +115,7 @@ module Handsoap
         @node_name = node_name
         @children = []
         @attributes = {}
+        @required_namespaces = [prefix]
         if options[:attributes]
           @attributes = options[:attributes]
         end
@@ -124,6 +125,7 @@ module Handsoap
         if block_given?
           yield self
         end
+        
       end
       # Returns the document that this element belongs to, or self if this is the document.
       def document
@@ -160,7 +162,11 @@ module Handsoap
       end
       # Sets the value of an attribute.
       def set_attr(name, value)
-        full_name = parse_ns(name).join(":")
+        prefix, attr_name = parse_ns(name)
+        full_name = [prefix, attr_name].join(":")
+        if(prefix != "xmlns")
+          @required_namespaces << prefix
+        end
         @attributes[name] = value
       end
       def find(name)
@@ -200,10 +206,16 @@ module Handsoap
       def defines_namespace?(prefix)
         @attributes.keys.include?("xmlns:#{prefix}") || @parent.defines_namespace?(prefix)
       end
+      def required_namespaces
+        @required_namespaces | @children.map { |child| (child.respond_to?(:required_namespaces)) ? child.required_namespaces : nil }.flatten.compact
+      end
       def to_s(indentation = '')
-        # todo resolve attribute prefixes aswell
-        if @prefix && (not defines_namespace?(@prefix))
-          set_attr "xmlns:#{@prefix}", get_namespace(@prefix)
+        if(@parent == document)
+          required_namespaces.each do |prefix|
+            if(not defines_namespace?(prefix))
+              set_attr "xmlns:#{prefix}", get_namespace(prefix)
+            end
+          end
         end
         name = XmlMason.xml_escape(full_name)
         attr = (@attributes.any? ? (" " + @attributes.map { |key, value| XmlMason.xml_escape(key) + '="' + XmlMason.xml_escape(value) + '"' }.join(" ")) : "")
